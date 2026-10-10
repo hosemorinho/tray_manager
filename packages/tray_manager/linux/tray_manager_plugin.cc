@@ -49,10 +49,10 @@ void _on_activate(GtkMenuItem* item, gpointer user_data) {
                                   nullptr, nullptr);
 }
 
-GtkWidget* _create_menu(FlValue* args) {
+GtkWidget* _create_menu(FlValue* args, GtkWidget* existing_menu = nullptr) {
   FlValue* items_value = fl_value_lookup_string(args, "items");
 
-  GtkWidget* menu = gtk_menu_new();
+  GtkWidget* menu = existing_menu ? existing_menu : gtk_menu_new();
   for (gint i = 0; i < fl_value_get_length(items_value); i++) {
     FlValue* item_value = fl_value_get_list_value(items_value, i);
     const int id = fl_value_get_int(fl_value_lookup_string(item_value, "id"));
@@ -141,9 +141,20 @@ static FlMethodResponse* set_title(TrayManagerPlugin* self, FlValue* args) {
 
 static FlMethodResponse* set_context_menu(TrayManagerPlugin* self,
                                           FlValue* args) {
-  menu = _create_menu(fl_value_lookup_string(args, "menu"));
+  if (!menu)
+    menu = gtk_menu_new();
 
-  app_indicator_set_menu(indicator, GTK_MENU(menu));
+  // Keep the menu already attached to the indicator. Reattaching it makes
+  // libayatana-appindicator register the same notifier again, which Deepin
+  // rejects. libdbusmenu watches GtkMenu insert/remove signals, so replacing
+  // its children updates the exported menu without another registration.
+  GList* children = gtk_container_get_children(GTK_CONTAINER(menu));
+  for (GList* child = children; child != nullptr; child = child->next) {
+    gtk_widget_destroy(GTK_WIDGET(child->data));
+  }
+  g_list_free(children);
+
+  _create_menu(fl_value_lookup_string(args, "menu"), menu);
   gtk_widget_show_all(menu);
 
   return FL_METHOD_RESPONSE(
